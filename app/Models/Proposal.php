@@ -7,12 +7,12 @@ use Illuminate\Database\Eloquent\Model;
 class Proposal extends Model
 {
     protected $fillable = [
-        'title', 
-        'description', 
-        'area', 
-        'priority', 
-        'status', 
-        'target_audience', 
+        'title',
+        'description',
+        'area',
+        'priority',
+        'status',
+        'target_audience',
         'created_by'
     ];
 
@@ -21,6 +21,9 @@ class Proposal extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function campaigns()
+    {
+        return $this->hasMany(Campaign::class);
+    }
 }
-
-

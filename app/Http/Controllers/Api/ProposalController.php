@@ -45,7 +45,7 @@ class ProposalController extends Controller
      */
     public function show(string $id)
     {
-        $proposal = Proposal::find($id);
+        $proposal = Proposal::with('campaigns')->findOrFail($id);
 
         if (!$proposal) {
             return response()->json(["message" => "Propuesta no encontrada"], 404);

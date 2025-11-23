@@ -4,46 +4,79 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use App\Models\Post;
 
 class PostController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
+    // Listar posts
     public function index()
     {
-        //
+        return Post::with('metrics')->get();
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
+    // Crear post
     public function store(Request $request)
     {
-        //
+        $validated = $request->validate([
+            'campaign_id'   => 'required|integer|exists:campaigns,id',
+            'title'         => 'required|string|max:255',
+            'platform'      => 'required|string|max:50',
+            'content'       => 'required|string',
+            'content_type'  => 'nullable|string|max:50',
+            'image_path'    => 'nullable|string|max:255',
+            'link_url'      => 'nullable|string|max:255',
+            'status'        => 'nullable|string|max:20',
+            'scheduled_at'  => 'nullable|date',
+            'published_at'  => 'nullable|date',
+            'created_by'    => 'nullable|integer|exists:users,id',
+        ]);
+
+        $post = Post::create($validated);
+
+        return response()->json($post, 201);
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    // Mostrar un post
+    public function show($id)
     {
-        //
+        return Post::with('metrics')->findOrFail($id);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
+    // Actualizar post
+    public function update(Request $request, $id)
     {
-        //
+        $post = Post::findOrFail($id);
+
+        $validated = $request->validate([
+            'title'         => 'sometimes|string|max:255',
+            'platform'      => 'sometimes|string|max:50',
+            'content'       => 'sometimes|string',
+            'content_type'  => 'nullable|string|max:50',
+            'image_path'    => 'nullable|string|max:255',
+            'link_url'      => 'nullable|string|max:255',
+            'status'        => 'nullable|string|max:20',
+            'scheduled_at'  => 'nullable|date',
+            'published_at'  => 'nullable|date',
+        ]);
+
+        $post->update($validated);
+
+        return response()->json($post);
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
+    // Eliminar post
+    public function destroy($id)
     {
-        //
+        $post = Post::findOrFail($id);
+        $post->delete();
+
+        return response()->json(['message' => 'Post deleted']);
+    }
+
+    // Listar posts por campaña
+    public function byCampaign($id)
+    {
+        $posts = Post::where('campaign_id', $id)->get();
+        return response()->json($posts);
     }
 }
