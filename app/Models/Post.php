@@ -26,9 +26,9 @@ class Post extends Model
         return $this->belongsTo(Campaign::class);
     }
 
-    // Cada post tiene una métrica asociada
-    public function metric()
+    // Cada post tiene múltiples métricas (historial)
+    public function metrics()
     {
-        return $this->hasOne(Metric::class);
+        return $this->hasMany(Metric::class);
     }
 }

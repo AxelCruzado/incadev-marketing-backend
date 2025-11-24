@@ -73,10 +73,27 @@ class PostController extends Controller
         return response()->json(['message' => 'Post deleted']);
     }
 
-    // Listar posts por campaña
+    // Listar posts por campaña con sus métricas
     public function byCampaign($id)
     {
-        $posts = Post::where('campaign_id', $id)->get();
+        $posts = Post::where('campaign_id', $id)
+            ->with('metrics')
+            ->get();
+            
         return response()->json($posts);
+    }
+
+    // Obtener todas las métricas de un post
+    public function metrics($id)
+    {
+        $post = Post::with('metrics')->findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'post_id' => $post->id,
+            'post_title' => $post->title,
+            'platform' => $post->platform,
+            'metrics' => $post->metrics,
+        ]);
     }
 }
