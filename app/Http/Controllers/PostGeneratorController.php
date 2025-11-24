@@ -18,6 +18,8 @@ class PostGeneratorController extends Controller
             'prompt' => 'required|string|min:5',
             'platform' => 'required|string|in:facebook,instagram',
             'content_type' => 'required|string|in:image,text,video',
+            // optionally accept an explicit image url/path to use as preview if provided
+            'image_url' => 'sometimes|nullable|url',
             'link_url' => 'sometimes|nullable|url',
         ]);
 
@@ -71,7 +73,9 @@ class PostGeneratorController extends Controller
                 }
             }
 
-            $tempImageUrl = null;
+            // if the caller provided an image_url, prefer it as the preview
+            $providedImageUrl = $request->input('image_url');
+            $tempImageUrl = $providedImageUrl ?: null;
             if (isset($responses['image'])) {
                 $r = $responses['image'];
                 if ($r instanceof \Throwable) {
@@ -87,11 +91,30 @@ class PostGeneratorController extends Controller
                 }
             }
 
+            // Provide 4 ready-to-publish caption options and choose a default (Option 1) so UI
+            // can immediately publish without asking the user to select among options.
+            $variants = [
+                "¡Primeros pasos en el mundo de la programación! 💻✨ Emocionado/a por aprender y crear. #ProgramacionBasica #AprendeACodear #CodingLife #NuevasHabilidades",
+                "¡Desbloqueando mi potencial con el curso de programación básica! 🚀🧠 ¡A programar se ha dicho! #ProgramacionParaTodos #CodingBeginner #Tecnologia #FuturoDigital",
+                "¡Empezando mi viaje en la programación! 💡👨‍💻👩‍💻 #CursoDeProgramacion #Coding #Basico #Educacion",
+                "¡Comenzando el curso de programación básica! ¿Alguien más por aquí aprendiendo a codear? 🤝💬 #ComunidadDeCoders #Programacion #AprenderJuntos #DesarrolloWeb",
+            ];
+
+            $default = $variants[0];
+
             return response()->json([
                 'success' => true,
                 'data' => [
                     'suggested_content' => $texto,
+                    // pre-filled content the UI can use directly to publish
+                    'default_suggestion' => $default,
+                    // also provide all variants so UI can show alternatives if desired
+                    'variants' => $variants,
+                    // image generation details
                     'temp_image_url' => $tempImageUrl,
+                    'image_generated' => !empty($tempImageUrl),
+                    // helpful for previewing in the UI (alias for front-end clarity)
+                    'image_preview' => $tempImageUrl,
                 ],
             ]);
 
