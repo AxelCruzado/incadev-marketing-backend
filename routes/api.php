@@ -5,6 +5,7 @@ use App\Http\Controllers\Api;
 use App\Http\Controllers\Api\CampaignController;
 use App\Http\Controllers\Api\PostController;
 use App\Http\Controllers\Api\CourseController;
+use App\Http\Controllers\Api\AlumnoController;
 
 Route::apiResource('campaigns', Api\CampaignController::class);
 Route::apiResource('proposals', Api\ProposalController::class);
@@ -20,7 +21,9 @@ Route::get('/courses/{id}', [CourseController::class, 'show']);
 Route::get('/courses/{id}/versions', [CourseController::class, 'versions']);
 Route::get('/courses/{id}/campaigns', [CourseController::class, 'campaigns']);
 
-
+// Alumnos - Estadísticas para dashboard de marketing
+Route::get('/alumnos/stats', [AlumnoController::class, 'stats']);
+Route::get('/alumnos/resumen', [AlumnoController::class, 'resumen']);
 
 Route::get('/health', function () {
     return response()->json([
