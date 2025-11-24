@@ -66,7 +66,6 @@ class AlumnoController extends Controller
                 'egresados' => $egresados,
                 'pendientes' => $pendientes,
                 'completados' => $completados,
-                'solicitudes_info' => 67, // Hardcodeado
             ],
             'grupos' => [
                 'activos' => $gruposActivos,
