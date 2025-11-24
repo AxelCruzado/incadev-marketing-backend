@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Proposal;
+use IncadevUns\CoreDomain\Models\Proposal;
 
 class ProposalController extends Controller
 {
@@ -32,7 +32,13 @@ class ProposalController extends Controller
             'created_by'      => 'nullable|exists:users,id'
         ]);
 
-        $proposal = Proposal::create($request->all());
+        $data = $request->all();
+        // If status is not provided, default to 'borrador' to match existing business flow
+        if (empty($data['status'])) {
+            $data['status'] = 'borrador';
+        }
+
+        $proposal = Proposal::create($data);
 
         return response()->json([
             'message' => 'Propuesta creada correctamente',

@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use App\Models\Metric;
+use IncadevUns\CoreDomain\Models\Metric;
 
 class MetricController extends Controller
 {

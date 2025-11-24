@@ -3,9 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Course;
-use App\Models\CourseVersion;
-use App\Models\Campaign;
+use IncadevUns\CoreDomain\Models\Course;
+use IncadevUns\CoreDomain\Models\CourseVersion;
+use IncadevUns\CoreDomain\Models\Campaign;
 use Illuminate\Http\Request;
 
 class CourseController extends Controller
