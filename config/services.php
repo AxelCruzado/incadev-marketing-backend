@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'social_api' => [
+        'url' => env('SOCIAL_API_URL', 'http://127.0.0.1:8005'),
+        // Optional token to authenticate internal service-to-service calls
+        'token' => env('SOCIAL_API_TOKEN', null),
+    ],
+
 ];

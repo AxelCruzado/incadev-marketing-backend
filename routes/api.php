@@ -10,6 +10,8 @@ use App\Http\Controllers\Api\AlumnoController;
 Route::apiResource('campaigns', Api\CampaignController::class);
 Route::apiResource('proposals', Api\ProposalController::class);
 Route::apiResource('posts', Api\PostController::class);
+// Publish an existing post to social media (calls socialmediaapi then updates local post)
+Route::post('posts/{id}/publish', [Api\PostController::class, 'publish']);
 // Generation endpoint - create a draft using external microservices
 Route::post('posts/generate-draft', [App\Http\Controllers\PostGeneratorController::class, 'generate']);
 Route::apiResource('metrics', Api\MetricController::class);
