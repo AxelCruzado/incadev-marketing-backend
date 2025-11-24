@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use IncadevUns\CoreDomain\Models\Post;
 
 class PostController extends Controller
@@ -30,6 +32,29 @@ class PostController extends Controller
             'published_at'  => 'nullable|date',
             'created_by'    => 'nullable|integer|exists:users,id',
         ]);
+
+        // If frontend provided a temporary image URL (from the generator microservice),
+        // download it and save it locally so the DB stores our own path.
+        if (empty($validated['image_path']) && $request->filled('image_url')) {
+            $imageUrl = $request->input('image_url');
+            try {
+                $resp = Http::timeout(15)->get($imageUrl);
+                if ($resp->ok()) {
+                    $mime = $resp->header('Content-Type', 'image/png');
+                    // try to determine extension
+                    $ext = 'png';
+                    if (str_contains($mime, 'jpeg') || str_contains($mime, 'jpg')) $ext = 'jpg';
+                    if (str_contains($mime, 'gif')) $ext = 'gif';
+
+                    $filename = 'posts/' . uniqid('', true) . '.' . $ext;
+                    Storage::disk('public')->put($filename, $resp->body());
+                    $validated['image_path'] = $filename;
+                }
+            } catch (\Throwable $e) {
+                // ignore the error and continue without image
+                logger()->warning('Unable to download remote image: ' . $e->getMessage());
+            }
+        }
 
         $post = Post::create($validated);
 

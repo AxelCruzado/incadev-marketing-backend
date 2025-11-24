@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\CourseController;
 Route::apiResource('campaigns', Api\CampaignController::class);
 Route::apiResource('proposals', Api\ProposalController::class);
 Route::apiResource('posts', Api\PostController::class);
+// Generation endpoint - create a draft using external microservices
+Route::post('posts/generate-draft', [App\Http\Controllers\PostGeneratorController::class, 'generate']);
 Route::apiResource('metrics', Api\MetricController::class);
 
 Route::get('campaigns/{id}/metrics', [CampaignController::class, 'metrics']);
