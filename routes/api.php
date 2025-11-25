@@ -24,6 +24,7 @@ Route::get('posts/{id}/metrics', [PostController::class, 'metrics']);
 Route::get('/courses', [CourseController::class, 'index']);
 Route::get('/courses/{id}', [CourseController::class, 'show']);
 Route::get('/versions', [CourseVersionController::class, 'index']);
+Route::get('/versions/{id}', [CourseVersionController::class, 'show']);
 
 Route::get('/courses/{id}/versions', [CourseController::class, 'versions']);
 Route::get('/courses/{id}/campaigns', [CourseController::class, 'campaigns']);

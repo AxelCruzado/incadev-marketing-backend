@@ -22,4 +22,12 @@ class CourseVersionController extends Controller
 
         return response()->json($versions);
     }
+
+    public function show(string $id)
+    {
+        $version = CourseVersion::with(['course', 'campaigns.posts.metrics'])
+            ->findOrFail($id);
+
+        return response()->json($version);
+    }
 }
