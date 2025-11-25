@@ -30,4 +30,26 @@ class CourseVersionController extends Controller
 
         return response()->json($version);
     }
+
+    public function campaigns(string $id)
+{
+    $version = CourseVersion::findOrFail($id);
+
+    $campaigns = $version->campaigns()
+        ->with(['proposal', 'posts.metrics'])
+        ->get();
+
+    return response()->json([
+        'version' => [
+            'id' => $version->id,
+            'name' => $version->name,
+            'version' => $version->version,
+            'price' => $version->price,
+            'status' => $version->status,
+        ],
+        'total_campaigns' => $campaigns->count(),
+        'campaigns' => $campaigns
+    ]);
+}
+
 }
