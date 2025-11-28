@@ -34,6 +34,7 @@ Route::get('/courses/{id}/campaigns', [CourseController::class, 'campaigns']);
 // Alumnos - Estadísticas para dashboard de marketing
 Route::get('/alumnos/stats', [AlumnoController::class, 'stats']);
 Route::get('/alumnos/resumen', [AlumnoController::class, 'resumen']);
+Route::get('/alumnos/{id}/detalle', [AlumnoController::class, 'detalle']);
 
 Route::get('/health', function () {
     return response()->json([
