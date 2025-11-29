@@ -57,7 +57,29 @@ class PostController extends Controller
     // Crear post
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        // Debugging log to inspect incoming request payload and headers
+        logger()->info('Incoming create post request', [
+            'payload' => $request->all(),
+            'content_type' => $request->header('Content-Type'),
+            'raw_body' => substr((string) $request->getContent(), 0, 2000),
+        ]);
+
+        // Note: JSON parsing should be done by the framework; ensure the client sends valid UTF-8 JSON.
+
+        // Defensive mapping: allow alternate keys from the UI if campaign id is provided under a different name
+        if (! $request->filled('campaign_id')) {
+            // Common variants submitted by client: postCampaignId, campaignId
+            $alt = $request->input('postCampaignId') ?: $request->input('campaignId') ?: $request->input('campaign_id');
+            if ($alt) {
+                $request->merge(['campaign_id' => $alt]);
+                logger()->info('Mapped alt campaign id to campaign_id', ['alt' => $alt]);
+            }
+        }
+
+        // Keep minimal logging for incoming request; further debug logs removed to keep code clean
+
+        try {
+            $validated = $request->validate([
             'campaign_id'   => 'required|integer|exists:campaigns,id',
             'title'         => 'required|string|max:255',
             'platform'      => 'required|string|max:50',
@@ -70,7 +92,16 @@ class PostController extends Controller
             'scheduled_at'  => 'nullable|date',
             'published_at'  => 'nullable|date',
             'created_by'    => 'nullable|integer|exists:users,id',
-        ]);
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Log full validation errors to help debugging
+            logger()->warning('PostController::store validation failed', [
+                'errors' => $e->errors(),
+                'payload' => $request->all(),
+            ]);
+
+            throw $e; // rethrow so Laravel retains standard response behavior
+        }
 
         // If frontend provided a temporary image URL (from the generator microservice) or
         // if image_path contains a remote URL, download it and save it locally so the DB stores our own path.
@@ -131,6 +162,14 @@ class PostController extends Controller
     // Actualizar post
     public function update(Request $request, $id)
     {
+        // Defensive mapping for update flow
+        if (! $request->filled('campaign_id')) {
+            $alt = $request->input('postCampaignId') ?: $request->input('campaignId') ?: $request->input('campaign_id');
+            if ($alt) {
+                $request->merge(['campaign_id' => $alt]);
+                logger()->info('Mapped alt campaign id to campaign_id (update)', ['alt' => $alt]);
+            }
+        }
         $post = Post::findOrFail($id);
 
         $validated = $request->validate([
