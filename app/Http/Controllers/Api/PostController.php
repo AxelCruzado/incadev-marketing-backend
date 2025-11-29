@@ -21,12 +21,27 @@ class PostController extends Controller
         try {
             $resp = Http::timeout(30)->get($remoteUrl);
             if (! $resp->ok()) return null;
-            $mime = $resp->header('Content-Type', 'image/png');
-            $ext = 'png';
+            $mime = $resp->header('Content-Type', 'image/jpeg');
+            $ext = 'jpg';
             if (str_contains($mime, 'jpeg') || str_contains($mime, 'jpg')) $ext = 'jpg';
             if (str_contains($mime, 'gif')) $ext = 'gif';
             $filename = 'posts/' . uniqid('', true) . '.' . $ext;
-            Storage::disk('public')->put($filename, $resp->body());
+            // Try to convert to JPEG bytes to guarantee JPEG storage
+            $bytes = $resp->body();
+            $jpegBytes = $bytes;
+            if (function_exists('imagecreatefromstring')) {
+                $im = @imagecreatefromstring($bytes);
+                if ($im !== false) {
+                    ob_start();
+                    imagejpeg($im, null, 85);
+                    imagedestroy($im);
+                    $jpeg = ob_get_clean();
+                    if ($jpeg !== false && strlen($jpeg) > 0) {
+                        $jpegBytes = $jpeg;
+                    }
+                }
+            }
+            Storage::disk('public')->put($filename, $jpegBytes);
             return $filename;
         } catch (\Throwable $e) {
             logger()->warning('Unable to download remote image: ' . $e->getMessage(), ['url' => $remoteUrl]);
@@ -64,9 +79,9 @@ class PostController extends Controller
             try {
                 $resp = Http::timeout(15)->get($imageUrl);
                 if ($resp->ok()) {
-                    $mime = $resp->header('Content-Type', 'image/png');
+                    $mime = $resp->header('Content-Type', 'image/jpeg');
                     // try to determine extension
-                    $ext = 'png';
+                    $ext = 'jpg';
                     if (str_contains($mime, 'jpeg') || str_contains($mime, 'jpg')) $ext = 'jpg';
                     if (str_contains($mime, 'gif')) $ext = 'gif';
 
@@ -93,15 +108,9 @@ class PostController extends Controller
             $imageId = $request->input('image_id');
             $genBase = config('services.generative_api.url', 'http://127.0.0.1:8004');
             try {
-                $resp = Http::timeout(30)->get(rtrim($genBase, '/') . '/api/generation/image/' . urlencode($imageId));
-                if ($resp->ok()) {
-                    $mime = $resp->header('Content-Type', 'image/png');
-                    $ext = 'png';
-                    if (str_contains($mime, 'jpeg') || str_contains($mime, 'jpg')) $ext = 'jpg';
-                    if (str_contains($mime, 'gif')) $ext = 'gif';
-                    $filename = 'posts/' . uniqid('', true) . '.' . $ext;
-                    Storage::disk('public')->put($filename, $resp->body());
-                    $validated['image_path'] = $filename;
+                $downloaded = $this->downloadRemoteImage(rtrim($genBase, '/') . '/api/generation/image/' . urlencode($imageId));
+                if ($downloaded) {
+                    $validated['image_path'] = $downloaded;
                 }
             } catch (\Throwable $e) {
                 logger()->warning('Unable to download generated image from generative API: ' . $e->getMessage());
@@ -140,15 +149,9 @@ class PostController extends Controller
             $imageId = $request->input('image_id');
             $genBase = config('services.generative_api.url', 'http://127.0.0.1:8004');
             try {
-                $resp = Http::timeout(30)->get(rtrim($genBase, '/') . '/api/generation/image/' . urlencode($imageId));
-                if ($resp->ok()) {
-                    $mime = $resp->header('Content-Type', 'image/png');
-                    $ext = 'png';
-                    if (str_contains($mime, 'jpeg') || str_contains($mime, 'jpg')) $ext = 'jpg';
-                    if (str_contains($mime, 'gif')) $ext = 'gif';
-                    $filename = 'posts/' . uniqid('', true) . '.' . $ext;
-                    Storage::disk('public')->put($filename, $resp->body());
-                    $validated['image_path'] = $filename;
+                $downloaded = $this->downloadRemoteImage(rtrim($genBase, '/') . '/api/generation/image/' . urlencode($imageId));
+                if ($downloaded) {
+                    $validated['image_path'] = $downloaded;
                 }
             } catch (\Throwable $e) {
                 logger()->warning('Unable to download generated image from generative API: ' . $e->getMessage());
