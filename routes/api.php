@@ -15,8 +15,15 @@ Route::apiResource('posts', Api\PostController::class);
 Route::post('posts/{id}/publish', [Api\PostController::class, 'publish']);
 // Generation endpoint - create a draft using external microservices
 Route::post('posts/generate-draft', [App\Http\Controllers\PostGeneratorController::class, 'generate']);
-// Proxy image GET from the generation microservice so the UI can use only marketing api host
-Route::get('v1/marketing/generation/image/{id}', [App\Http\Controllers\PostGeneratorController::class, 'proxyGeneratedImage']);
+// Proxy endpoints to mirror generative service API under marketing host
+Route::post('generation/{platform}', [App\Http\Controllers\PostGeneratorController::class, 'proxyTextGeneration']);
+Route::post('generation/image', [App\Http\Controllers\PostGeneratorController::class, 'proxyImageGeneration']);
+// Public image GET for generated images (served from storage/public/generated)
+// This endpoint is intentionally public (no auth) so external services like Meta
+// can fetch images directly using a stable URL: `https://<marketing-host>/api/generation/image/{id}`
+Route::get('generation/image/{id}', [App\Http\Controllers\PostGeneratorController::class, 'proxyGeneratedImage']);
+// List generated images (public) - diagnostic / consumption by other services
+Route::get('generation/images', [App\Http\Controllers\PostGeneratorController::class, 'listGeneratedImages']);
 Route::apiResource('metrics', Api\MetricController::class);
 
 Route::get('campaigns/{id}/metrics', [CampaignController::class, 'metrics']);

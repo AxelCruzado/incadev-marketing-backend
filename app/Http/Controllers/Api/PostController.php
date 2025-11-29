@@ -100,52 +100,24 @@ class PostController extends Controller
                 'payload' => $request->all(),
             ]);
 
-            throw $e; // rethrow so Laravel retains standard response behavior
+            throw $e;
         }
 
-        // If frontend provided a temporary image URL (from the generator microservice) or
-        // if image_path contains a remote URL, download it and save it locally so the DB stores our own path.
-        if ($request->filled('image_url') && empty($validated['image_path'])) {
-            $imageUrl = $request->input('image_url');
-            try {
-                $resp = Http::timeout(15)->get($imageUrl);
-                if ($resp->ok()) {
-                    $mime = $resp->header('Content-Type', 'image/jpeg');
-                    // try to determine extension
-                    $ext = 'jpg';
-                    if (str_contains($mime, 'jpeg') || str_contains($mime, 'jpg')) $ext = 'jpg';
-                    if (str_contains($mime, 'gif')) $ext = 'gif';
-
-                    $filename = 'posts/' . uniqid('', true) . '.' . $ext;
-                    Storage::disk('public')->put($filename, $resp->body());
-                    $validated['image_path'] = $filename;
-                }
-            } catch (\Throwable $e) {
-                // ignore the error and continue without image
-                logger()->warning('Unable to download remote image: ' . $e->getMessage());
+        $imageUrl = $request->input('public_image_url') ?: $request->input('image_url');
+        if (!empty($imageUrl) && empty($validated['image_path'])) {
+            if (str_contains($imageUrl, '/api/generation/image/')) {
+                $parts = explode('/api/generation/image/', $imageUrl);
+                $validated['image_path'] = end($parts) ?: null;
+            } elseif (str_contains($imageUrl, '/storage/generated/')) {
+                $validated['image_path'] = pathinfo($imageUrl, PATHINFO_FILENAME) ?: null;
+            } else {
+                $downloaded = $this->downloadRemoteImage($imageUrl);
+                if ($downloaded) $validated['image_path'] = $downloaded;
             }
         }
 
-        // If caller set image_path but it's a remote URL (e.g., http://...), try to download it locally
-        if (! empty($validated['image_path']) && (str_starts_with($validated['image_path'], 'http://') || str_starts_with($validated['image_path'], 'https://'))) {
-            $downloaded = $this->downloadRemoteImage($validated['image_path']);
-            if ($downloaded) {
-                $validated['image_path'] = $downloaded;
-            }
-        }
-
-        // If no image_path but generator provided an image_id, try to fetch from generation microservice
         if (empty($validated['image_path']) && $request->filled('image_id')) {
-            $imageId = $request->input('image_id');
-            $genBase = config('services.generative_api.url', 'http://127.0.0.1:8004');
-            try {
-                $downloaded = $this->downloadRemoteImage(rtrim($genBase, '/') . '/api/generation/image/' . urlencode($imageId));
-                if ($downloaded) {
-                    $validated['image_path'] = $downloaded;
-                }
-            } catch (\Throwable $e) {
-                logger()->warning('Unable to download generated image from generative API: ' . $e->getMessage());
-            }
+            $validated['image_path'] = $request->input('image_id');
         }
 
         $post = Post::create($validated);
@@ -183,18 +155,23 @@ class PostController extends Controller
             'scheduled_at'  => 'nullable|date',
             'published_at'  => 'nullable|date',
         ]);
-        // If no image_path but generator provided an image_id, try to fetch from generation microservice
-        if (empty($validated['image_path']) && $request->filled('image_id')) {
-            $imageId = $request->input('image_id');
-            $genBase = config('services.generative_api.url', 'http://127.0.0.1:8004');
-            try {
-                $downloaded = $this->downloadRemoteImage(rtrim($genBase, '/') . '/api/generation/image/' . urlencode($imageId));
-                if ($downloaded) {
-                    $validated['image_path'] = $downloaded;
-                }
-            } catch (\Throwable $e) {
-                logger()->warning('Unable to download generated image from generative API: ' . $e->getMessage());
+        // Consolidated image flow for update: prefer storing image_id, extract id from marketing URLs,
+        // download only for arbitrary external URLs.
+        $imageUrl = $request->input('public_image_url') ?: $request->input('image_url');
+        if (!empty($imageUrl) && empty($validated['image_path'])) {
+            if (str_contains($imageUrl, '/api/generation/image/')) {
+                $parts = explode('/api/generation/image/', $imageUrl);
+                $validated['image_path'] = end($parts) ?: null;
+            } elseif (str_contains($imageUrl, '/storage/generated/')) {
+                $validated['image_path'] = pathinfo($imageUrl, PATHINFO_FILENAME) ?: null;
+            } else {
+                $downloaded = $this->downloadRemoteImage($imageUrl);
+                if ($downloaded) $validated['image_path'] = $downloaded;
             }
+        }
+
+        if (empty($validated['image_path']) && $request->filled('image_id')) {
+            $validated['image_path'] = $request->input('image_id');
         }
 
         // If image_path is a remote URL (e.g. an absolute http(s) link) try to download / normalize it to a local public path
@@ -270,25 +247,47 @@ class PostController extends Controller
                 if ($post->platform === 'instagram') $payload['caption'] = $post->content;
             }
 
-            // Provide image URL if available
+            // Resolve image for publish (clean flow):
+            // - If image_path is a remote URL, download it and persist locally.
+            // - If image_path is a stored path (contains '/'), use that.
+            // - If image_path is an image id, look under `generated/` then `posts/` for a matching file.
+            // Keep resolution separate from attaching; attach after the HTTP client is prepared.
+            $resolvedForAttach = null;
+            $fallbackImageUrl = null;
             if (!empty($post->image_path)) {
-                // If image_path appears to be a remote HTTP URL, download it and persist as a local public path
+                // Remote URL -> download and persist
                 if (str_starts_with($post->image_path, 'http://') || str_starts_with($post->image_path, 'https://')) {
-                    Log::info('Post image_path is remote URL, attempting to download into public storage', ['image_path' => $post->image_path]);
                     $downloaded = $this->downloadRemoteImage($post->image_path);
                     if ($downloaded) {
                         $post->image_path = $downloaded;
-                        try { $post->save(); } catch (\Throwable $e) { Log::warning('Failed to save downloaded image path to post', ['post_id' => $post->id, 'error' => $e->getMessage()]); }
+                        try { $post->save(); } catch (\Throwable $_) { /* ignore save errors */ }
                     }
                 }
-                // Try to build a public URL for the image (assumes public disk)
-                try {
-                    $imgUrl = Storage::disk('public')->url($post->image_path);
-                } catch (\Throwable $e) {
-                    $imgUrl = null;
+
+                // If it's already a stored path
+                if (str_contains($post->image_path, '/')) {
+                    $resolvedForAttach = $post->image_path;
+                } else {
+                    // Treat as image_id: search generated/ then posts/
+                    $files = Storage::disk('public')->files('generated');
+                    foreach ($files as $file) {
+                        if (pathinfo($file, PATHINFO_FILENAME) === $post->image_path) { $resolvedForAttach = $file; break; }
+                    }
+                    if (empty($resolvedForAttach)) {
+                        $files2 = Storage::disk('public')->files('posts');
+                        foreach ($files2 as $file) {
+                            if (pathinfo($file, PATHINFO_FILENAME) === $post->image_path) { $resolvedForAttach = $file; break; }
+                        }
+                    }
                 }
-                if ($imgUrl) {
-                    $payload['image_url'] = $imgUrl;
+
+                // If no local file found, prepare a fallback public URL
+                if (empty($resolvedForAttach)) {
+                    if (str_contains($post->image_path, '/')) {
+                        $fallbackImageUrl = rtrim(config('app.url', env('APP_URL', 'http://127.0.0.1:8002')), '/') . '/storage/' . ltrim($post->image_path, '/');
+                    } else {
+                        $fallbackImageUrl = rtrim(config('app.url', env('APP_URL', 'http://127.0.0.1:8002')), '/') . '/api/generation/image/' . $post->image_path;
+                    }
                 }
             }
 
@@ -328,19 +327,22 @@ class PostController extends Controller
                 }
             }
 
-            // If we have a local image_path (stored in public disk), attach it as multipart 'image' so
-            // the socialmedia API will receive the file and publish using a local upload rather
-            // than passing a public URL (Meta Graph requires publicly accessible URLs otherwise).
-            if (! empty($post->image_path) && Storage::disk('public')->exists($post->image_path)) {
-                $localPath = storage_path('app/public/' . $post->image_path);
+            // Attach resolved local file (if any); otherwise, ensure a fallback public URL is provided.
+            $attached = false;
+            if (!empty($resolvedForAttach) && Storage::disk('public')->exists($resolvedForAttach)) {
+                $localPath = storage_path('app/public/' . $resolvedForAttach);
                 try {
                     $fileContents = file_get_contents($localPath);
                     $client = $client->attach('image', $fileContents, basename($localPath))->asMultipart();
-                    // Remove image_url from payload to avoid confusion on the remote side
                     unset($payload['image_url']);
+                    $attached = true;
                 } catch (\Throwable $e) {
-                    Log::warning('Unable to attach image file to social publish - keeping image_url', ['path' => $localPath, 'error' => $e->getMessage()]);
+                    Log::warning('Unable to attach resolved image file to social publish - keeping image_url', ['path' => $localPath, 'error' => $e->getMessage()]);
                 }
+            }
+
+            if (! $attached && ! empty($fallbackImageUrl)) {
+                $payload['image_url'] = $fallbackImageUrl;
             }
 
             Log::info('Forwarding publish to social API', ['endpoint' => $endpoint, 'payload' => $payload]);
