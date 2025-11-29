@@ -191,6 +191,12 @@ class AlumnoController extends Controller
             $estado = 'egresado';
         }
 
+        // Calcular engagement (0-10) igual que en stats
+        $engagementScore = $this->calcularEngagementScore(
+            $this->calcularAsistencias($enrollment)['porcentaje'] ?? 0,
+            $this->calcularRendimiento($enrollment)['promedio_notas'] ?? 0
+        );
+
         // Información básica del alumno
         $alumno = [
             'id' => $user->id,
@@ -206,6 +212,7 @@ class AlumnoController extends Controller
             'fecha_registro' => $user->created_at?->toISOString(),
             'interests' => $studentProfile->interests ?? [],
             'learning_goal' => $studentProfile->learning_goal ?? '',
+            'engagement_score' => $engagementScore,
         ];
 
         // Historial de asistencias
