@@ -14,6 +14,8 @@ Route::apiResource('posts', Api\PostController::class);
 Route::post('posts/{id}/publish', [Api\PostController::class, 'publish']);
 // Generation endpoint - create a draft using external microservices
 Route::post('posts/generate-draft', [App\Http\Controllers\PostGeneratorController::class, 'generate']);
+// Proxy image GET from the generation microservice so the UI can use only marketing api host
+Route::get('v1/marketing/generation/image/{id}', [App\Http\Controllers\PostGeneratorController::class, 'proxyGeneratedImage']);
 Route::apiResource('metrics', Api\MetricController::class);
 
 Route::get('campaigns/{id}/metrics', [CampaignController::class, 'metrics']);

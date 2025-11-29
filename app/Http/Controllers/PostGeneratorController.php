@@ -83,11 +83,52 @@ class PostGeneratorController extends Controller
                 } elseif ($r->ok()) {
                     $payload = $r->json();
                     $saved = data_get($payload, 'saved_images.0');
-                    if ($saved && isset($saved['id'])) {
-                        $tempImageUrl = rtrim($base, '/') . '/api/v1/marketing/generation/image/' . $saved['id'];
-                    } else {
-                        $tempImageUrl = data_get($payload, 'image_url') ?? data_get($payload, 'url') ?? null;
-                    }
+                            if ($saved && isset($saved['id'])) {
+                                // Always prefer a marketing-backend-hosted preview URL so the UI can
+                                // fetch images via the marketing API host (apiUrl) in production.
+                                $marketingBase = rtrim(config('app.url', env('APP_URL', 'http://127.0.0.1:8002')), '/');
+                                $tempImageUrl = $marketingBase . '/api/v1/marketing/generation/image/' . $saved['id'];
+                        
+                            } else {
+                                $rawUrl = data_get($payload, 'image_url') ?? data_get($payload, 'url') ?? null;
+                                // Normalize absolute URLs coming from the generative service so the UI
+                                // can rely on the marketing api host (apiUrl) in production.
+                                if (!empty($rawUrl)) {
+                                    $marketingBase = rtrim(config('app.url', env('APP_URL', 'http://127.0.0.1:8002')), '/');
+                                    $genBase = rtrim(config('services.generative_api.url', 'http://127.0.0.1:8004'), '/');
+                                    try {
+                                        $parts = parse_url($rawUrl);
+                                        $path = $parts['path'] ?? null;
+                                        // If path looks like the generative image get endpoint, extract the id
+                                        if ($path && str_contains($path, '/api/v1/marketing/generation/image')) {
+                                            $segments = array_values(array_filter(explode('/', $path)));
+                                            $id = end($segments);
+                                            if (!empty($id)) {
+                                                $tempImageUrl = $marketingBase . '/api/v1/marketing/generation/image/' . $id;
+                                            }
+                                        }
+                                        // If the URL host matches the generative service base, but doesn't include path, rewrite host
+                                        if (empty($tempImageUrl) && !empty($parts['host'])) {
+                                            $genHost = parse_url($genBase, PHP_URL_HOST);
+                                            if ($genHost && str_contains($parts['host'], $genHost)) {
+                                                // Replace host with marketing base host and keep path
+                                                $path = $parts['path'] ?? '';
+                                                $tempImageUrl = $marketingBase . $path;
+                                            }
+                                        }
+                                    } catch (\Throwable $e) {
+                                        // Fallback to raw URL if parsing fails
+                                        $tempImageUrl = $rawUrl;
+                                    }
+
+                                    // As a final fallback, if we still didn't build a marketing URL, use the raw one
+                                    if (empty($tempImageUrl)) {
+                                        $tempImageUrl = $rawUrl;
+                                    }
+                                } else {
+                                    $tempImageUrl = null;
+                                }
+                            }
                 }
             }
 
@@ -122,5 +163,34 @@ class PostGeneratorController extends Controller
             Log::error('PostGenerator error: ' . $e->getMessage());
             return response()->json(['success' => false, 'message' => 'Error generando borrador: ' . $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Proxy a generated image from the generative microservice so clients can fetch
+     * previews from the marketing-backend host (useful when UI only knows marketing apiUrl).
+     */
+    public function proxyGeneratedImage($id)
+    {
+        $base = config('services.generative_api.url', 'http://127.0.0.1:8004');
+        $url = rtrim($base, '/') . '/api/v1/marketing/generation/image/' . $id;
+
+        try {
+            $resp = Http::withOptions(['verify' => false])->get($url);
+        } catch (\Throwable $e) {
+            Log::warning('Failed proxying generated image: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Upstream image unavailable'], 502);
+        }
+
+        if (! $resp->successful()) {
+            return response()->json(['success' => false, 'message' => 'Upstream image returned error', 'status' => $resp->status()], $resp->status());
+        }
+
+        $contentType = $resp->header('Content-Type') ?? 'image/png';
+        $contentDisposition = $resp->header('Content-Disposition') ?? 'inline';
+
+        return response($resp->body(), 200, [
+            'Content-Type' => $contentType,
+            'Content-Disposition' => $contentDisposition,
+        ]);
     }
 }
