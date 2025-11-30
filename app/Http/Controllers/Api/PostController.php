@@ -202,8 +202,16 @@ class PostController extends Controller
         $posts = Post::where('campaign_id', $id)
             ->with('metrics')
             ->get();
-            
-        return response()->json($posts);
+
+        $out = $posts->map(function ($p) {
+            $arr = $p->toArray();
+            if (! array_key_exists('meta_post_id', $arr)) {
+                $arr['meta_post_id'] = $p->meta_post_id ?? null;
+            }
+            return $arr;
+        });
+
+        return response()->json($out);
     }
 
     // Obtener todas las métricas de un post
